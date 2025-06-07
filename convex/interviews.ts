@@ -50,9 +50,32 @@ export const createInterview = mutation({
     const identity = await ctx.auth.getUserIdentity();
     if (!identity) throw new Error("Unauthorized");
 
+    // 1. Create a new document
+    const documentId = await ctx.db.insert("documents", {
+      content: "", // Initial empty content
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    });
+
+    if (!documentId) {
+      throw new Error("Failed to create document for the interview.");
+    }
+
+    // 2. Insert the interview with the new documentId
     return await ctx.db.insert("interviews", {
       ...args,
+      documentId: documentId, // Add the documentId here
     });
+  },
+});
+
+export const getInterviewById = query({
+  args: { id: v.id("interviews") },
+  handler: async (ctx, args) => {
+    const identity = await ctx.auth.getUserIdentity();
+    if (!identity) throw new Error("Unauthorized"); // Or handle as per app's auth policy
+
+    return await ctx.db.get(args.id);
   },
 });
 

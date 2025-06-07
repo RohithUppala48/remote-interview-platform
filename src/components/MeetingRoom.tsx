@@ -19,8 +19,13 @@ import {
 import { Button } from "./ui/button";
 import EndCallButton from "./EndCallButton";
 import CodeEditor from "./CodeEditor";
+import { Id } from "../../convex/_generated/dataModel"; // Adjusted path
 
-function MeetingRoom() {
+interface MeetingRoomProps {
+  interviewId: Id<"interviews">;
+}
+
+function MeetingRoom({ interviewId }: MeetingRoomProps) {
   const router = useRouter();
   const [layout, setLayout] = useState<"grid" | "speaker">("speaker");
   const [showParticipants, setShowParticipants] = useState(false);
@@ -95,7 +100,7 @@ function MeetingRoom() {
         <ResizableHandle withHandle />
 
         <ResizablePanel defaultSize={65} minSize={25}>
-          <CodeEditor />
+          <CodeEditor interviewId={interviewId} />
         </ResizablePanel>
       </ResizablePanelGroup>
     </div>

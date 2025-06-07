@@ -1,27 +1,83 @@
 import { CODING_QUESTIONS, LANGUAGES } from "@/constants";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "./ui/resizable";
 import { ScrollArea, ScrollBar } from "./ui/scroll-area";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "./ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "./ui/card";
 import { AlertCircleIcon, BookIcon, LightbulbIcon } from "lucide-react";
 import Editor from "@monaco-editor/react";
+import { Id } from "../../convex/_generated/dataModel";
+import { useQuery, useMutation } from "convex/react";
+import { api } from "../../convex/_generated/api";
 
-function CodeEditor() {
+interface CodeEditorProps {
+  interviewId: Id<"interviews">;
+}
+
+function CodeEditor(props: CodeEditorProps) {
+  const { interviewId } = props;
+
   const [selectedQuestion, setSelectedQuestion] = useState(CODING_QUESTIONS[0]);
   const [language, setLanguage] = useState<"javascript" | "python" | "java">(LANGUAGES[0].id);
-  const [code, setCode] = useState(selectedQuestion.starterCode[language]);
+  const [editorContent, setEditorContent] = useState<string>("");
+
+  const interviewData = useQuery(api.interviews.getInterviewById, { id: interviewId });
+  const documentId = interviewData?.documentId;
+
+  // Corrected skip logic: only run if documentId is a valid string
+  const documentFromDB = useQuery(
+    api.documents.get,
+    documentId ? { id: documentId } : "skip"
+  );
+  const updateDocument = useMutation(api.documents.update);
+
+  useEffect(() => {
+    if (documentFromDB && documentFromDB.content !== editorContent) {
+      if (documentId) {
+        console.log("Document updated remotely, refreshing editor for document:", documentId);
+      }
+      setEditorContent(documentFromDB.content);
+    } else if (documentFromDB && documentFromDB.content === "" && editorContent === "" && selectedQuestion && language && documentId) {
+      console.log("Initializing editor with starter code for document:", documentId);
+      const starter = selectedQuestion.starterCode[language];
+      setEditorContent(starter);
+      updateDocument({ id: documentId, content: starter })
+        .catch(err => console.error("Failed to initialize document " + documentId + " with starter code:", err));
+    }
+  }, [documentFromDB, selectedQuestion, language, documentId, updateDocument, editorContent]); // editorContent is needed here to prevent re-initializing if user starts typing before doc loads
+
+  const handleEditorChange = (value: string | undefined) => {
+    const newContent = value || "";
+    setEditorContent(newContent);
+    if (documentId && documentFromDB && newContent !== documentFromDB.content) {
+      console.log("Sending update to document:", documentId);
+      updateDocument({ id: documentId, content: newContent })
+        .catch(err => console.error("Failed to save changes for document " + documentId + ":", err));
+    }
+  };
 
   const handleQuestionChange = (questionId: string) => {
     const question = CODING_QUESTIONS.find((q) => q.id === questionId)!;
     setSelectedQuestion(question);
-    setCode(question.starterCode[language]);
+    // Starter code initialization is handled by the useEffect
   };
 
   const handleLanguageChange = (newLanguage: "javascript" | "python" | "java") => {
     setLanguage(newLanguage);
-    setCode(selectedQuestion.starterCode[newLanguage]);
+    // Starter code initialization is handled by the useEffect
   };
+
+  // Refined Loading/Error States
+  if (interviewData === undefined) return <p className="p-4">Loading interview data...</p>;
+  if (interviewData === null) return <p className="p-4">Interview not found.</p>;
+
+  // At this point, interviewData is valid.
+  if (!documentId) return <p className="p-4">Document ID missing for this interview. This may be an old interview.</p>;
+
+  // Now handle document loading
+  if (documentFromDB === undefined) return <p className="p-4">Loading document...</p>;
+  if (documentFromDB === null) return <p className="p-4">Collaborative document not found or access denied for ID: {documentId}</p>;
+  // If we reach here, documentFromDB is the actual document object.
 
   return (
     <ResizablePanelGroup direction="vertical" className="min-h-[calc-100vh-4rem-1px]">
@@ -165,11 +221,11 @@ function CodeEditor() {
         <div className="h-full relative">
           <Editor
             height={"100%"}
-            defaultLanguage={language}
+            defaultLanguage={language} // Ensure this is dynamically updated if language changes
             language={language}
             theme="vs-dark"
-            value={code}
-            onChange={(value) => setCode(value || "")}
+            value={editorContent}
+            onChange={handleEditorChange}
             options={{
               minimap: { enabled: false },
               fontSize: 18,
